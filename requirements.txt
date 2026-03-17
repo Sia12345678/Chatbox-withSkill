@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-dotenv
+langchain
+langchain-anthropic
+langchain-deepseek
+deepagents
+requests
+playwright
+beautifulsoup4
+markdownify
+Pillow
+pytesseract
