@@ -81,11 +81,46 @@
     text-transform: uppercase;
   }
 
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
   .header-status {
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-dim);
     letter-spacing: 0.05em;
+  }
+
+  /* Skill indicator */
+  .skill-indicator {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .skill-indicator.active {
+    display: flex;
+  }
+
+  .skill-indicator::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 1.5s ease-in-out infinite;
   }
 
   /* Messages area */
@@ -178,6 +213,98 @@
 
   .message.assistant .message-body {
     border-color: #252525;
+  }
+
+  /* Thinking section */
+  .thinking-section {
+    margin-top: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .thinking-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--surface2);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .thinking-header:hover {
+    background: var(--surface);
+  }
+
+  .thinking-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .thinking-count {
+    background: var(--accent-dim);
+    color: var(--accent);
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 9px;
+  }
+
+  .thinking-toggle {
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: transform 0.2s;
+  }
+
+  .thinking-section.expanded .thinking-toggle {
+    transform: rotate(180deg);
+  }
+
+  .thinking-content {
+    display: none;
+    padding: 12px 14px;
+    background: var(--surface);
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .thinking-section.expanded .thinking-content {
+    display: block;
+  }
+
+  .thinking-step {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .thinking-step:last-child {
+    border-bottom: none;
+  }
+
+  .thinking-step-header {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--accent);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .thinking-step-content {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    background: var(--bg);
+    padding: 8px 10px;
+    border-radius: 6px;
+    overflow-x: auto;
   }
 
   /* Typing indicator */
@@ -281,7 +408,12 @@
       <div class="logo-dot"></div>
       <span class="header-title">Assistant</span>
     </div>
-    <span class="header-status" id="status-label">ready</span>
+    <div class="header-right">
+      <div class="skill-indicator" id="skill-indicator">
+        web-crawler active
+      </div>
+      <span class="header-status" id="status-label">ready</span>
+    </div>
   </header>
 
   <!-- Messages -->
@@ -321,9 +453,12 @@
   const inputEl    = document.getElementById('message-input');
   const sendBtn    = document.getElementById('send-btn');
   const statusEl   = document.getElementById('status-label');
+  const skillEl    = document.getElementById('skill-indicator');
   const emptyState = document.getElementById('empty-state');
 
   let isLoading = false;
+  let currentAssistantMsg = null;
+  let currentThinkingSection = null;
 
   // Auto-resize textarea as user types
   inputEl.addEventListener('input', () => {
@@ -356,6 +491,54 @@
     return msg;
   }
 
+  function createStreamingMessage() {
+    if (emptyState) emptyState.remove();
+
+    const msg = document.createElement('div');
+    msg.className = 'message assistant';
+    msg.innerHTML = `
+      <div class="message-role">assistant</div>
+      <div class="message-body"></div>
+    `;
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return msg;
+  }
+
+  function addThinkingSection(parentMsg, thinkingSteps) {
+    const thinkingSection = document.createElement('div');
+    thinkingSection.className = 'thinking-section';
+    thinkingSection.innerHTML = `
+      <div class="thinking-header">
+        <span class="thinking-title">
+          thinking process
+          <span class="thinking-count">${thinkingSteps.length} steps</span>
+        </span>
+        <span class="thinking-toggle">▼</span>
+      </div>
+      <div class="thinking-content">
+        ${thinkingSteps.map(step => `
+          <div class="thinking-step">
+            <div class="thinking-step-header">
+              ${step.type === 'tool_call' ? '🔧' : '📄'} ${step.name}
+            </div>
+            ${step.args ? `<div class="thinking-step-content">${escapeHtml(JSON.stringify(step.args, null, 2))}</div>` : ''}
+            ${step.content ? `<div class="thinking-step-content">${escapeHtml(step.content)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    // Toggle functionality
+    const header = thinkingSection.querySelector('.thinking-header');
+    header.addEventListener('click', () => {
+      thinkingSection.classList.toggle('expanded');
+    });
+
+    parentMsg.appendChild(thinkingSection);
+    return thinkingSection;
+  }
+
   function addTypingIndicator() {
     if (emptyState) emptyState.remove();
     const msg = document.createElement('div');
@@ -385,6 +568,15 @@
     statusEl.textContent = loading ? 'thinking...' : 'ready';
   }
 
+  function showSkillIndicator(skillName) {
+    skillEl.textContent = skillName ? `${skillName} active` : 'skill active';
+    skillEl.classList.add('active');
+  }
+
+  function hideSkillIndicator() {
+    skillEl.classList.remove('active');
+  }
+
   async function sendMessage() {
     const text = inputEl.value.trim();
     if (!text || isLoading) return;
@@ -398,24 +590,97 @@
     addTypingIndicator();
     setLoading(true);
 
+    // Reset state
+    currentAssistantMsg = null;
+    currentThinkingSection = null;
+    hideSkillIndicator();
+
     try {
-      const res = await fetch('/chat', {
+      // Use streaming endpoint
+      const response = await fetch('/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text })
       });
 
-      const data = await res.json();
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Request failed');
+      }
+
       removeTypingIndicator();
 
-      if (res.ok) {
-        addMessage('assistant', data.reply);
-      } else {
-        addMessage('assistant', `Error: ${data.detail || 'Something went wrong'}`);
+      // Create streaming message container
+      currentAssistantMsg = createStreamingMessage();
+      const messageBody = currentAssistantMsg.querySelector('.message-body');
+
+      // Parse SSE stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let thinkingSteps = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (line.startsWith('event: ')) {
+            const eventType = line.slice(7);
+            const dataLine = lines[++i];
+            if (dataLine && dataLine.startsWith('data: ')) {
+              const data = JSON.parse(dataLine.slice(6));
+
+              switch (eventType) {
+                case 'thinking_start':
+                  statusEl.textContent = 'analyzing...';
+                  break;
+
+                case 'thinking':
+                  thinkingSteps.push(data);
+                  break;
+
+                case 'skill_used':
+                  if (data.skill_used) {
+                    showSkillIndicator(data.skill_name);
+                  }
+                  break;
+
+                case 'token':
+                  messageBody.textContent += data.content;
+                  messagesEl.scrollTop = messagesEl.scrollHeight;
+                  break;
+
+                case 'thinking_complete':
+                  if (thinkingSteps.length > 0) {
+                    addThinkingSection(currentAssistantMsg, thinkingSteps);
+                  }
+                  break;
+
+                case 'done':
+                  statusEl.textContent = 'ready';
+                  break;
+
+                case 'error':
+                  throw new Error(data.detail);
+              }
+            }
+          }
+        }
       }
+
     } catch (err) {
       removeTypingIndicator();
-      addMessage('assistant', 'Could not reach the server. Is it running?');
+      if (currentAssistantMsg) {
+        currentAssistantMsg.remove();
+      }
+      addMessage('assistant', `Error: ${err.message}`);
+      hideSkillIndicator();
     } finally {
       setLoading(false);
       inputEl.focus();
@@ -423,6 +688,7 @@
   }
 
   function escapeHtml(text) {
+    if (!text) return '';
     return text
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
